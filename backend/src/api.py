@@ -41,7 +41,7 @@ def drinks_short():
 
 @app.route('/drinks-detail')
 @requires_auth('get:drinks-detail')
-def drinks_long():
+def drinks_long(z):
     """
     GET /drinks-detail
         it should require the 'get:drinks-detail' permission
@@ -49,17 +49,16 @@ def drinks_long():
     returns status code 200 and json {"success": True, "drinks": drinks} where drinks is the list of drinks
         or appropriate status code indicating reason for failure
     """
-    drinks = Drink.query.all()
     return (jsonify(dict(
         success=True,
-        drinks=[drink.long() for drink in drinks],
+        drinks=[drink.long() for drink in Drink.query.all()],
     )),
             200)
 
 
 @app.route('/drinks/<int:id>', methods=["PATCH"])
 @requires_auth('patch:drinks')
-def patch_drink(id):
+def patch_drink(z, id):
     """
     PATCH /drinks/<id>
         where <id> is the existing model id
@@ -70,22 +69,27 @@ def patch_drink(id):
     returns status code 200 and json {"success": True, "drinks": drink} where drink an array containing only the updated drink
         or appropriate status code indicating reason for failure
     """
+    data = (request.form or request.json or request.data)
     drink = Drink.query.filter(Drink.id == id).one_or_none()
     if not drink:
         abort(404)
-    for att in request.json:
-        setattr(drink, att, request.json.get(att))
+    title = data.get('title')
+    recipe = data.get('recipe')
+    recipe = recipe if recipe else drink.recipe
+    recipe = recipe if isinstance(recipe, str) else json.dumps(recipe)
+    drink.title = title if title else drink.title
+    drink.recipe = recipe if recipe else drink.recipe
     drink.update()
 
     return (jsonify(dict(
         success=True,
         drinks=[drink.long()],
-    )), 200) if drink else (jsonify({}), 405)
+    )), 200)
 
 
 @app.route('/drinks', methods=["POST"])
 @requires_auth('post:drinks')
-def create_drink():
+def create_drink(z):
     """
     POST /drinks
         it should create a new row in the drinks table
@@ -94,11 +98,12 @@ def create_drink():
     returns status code 200 and json {"success": True, "drinks": drink} where drink an array containing only the newly created drink
         or appropriate status code indicating reason for failure
     """
-    try:
-        req = request.json.get
-    except AttributeError:
-        abort(500)
-    drink = Drink(title=req('title'), recipe=json.dumps(request.json['recipe']))
+    req = (request.json or request.form or request.data)
+    recipe = req.get('recipe')
+    drink = Drink(
+        title=req.get('title'),
+        recipe=recipe if isinstance(recipe, str) else json.dumps(recipe)
+    )
     drink.insert()
     return (jsonify(dict(
         success=True,
@@ -108,7 +113,7 @@ def create_drink():
 
 @app.route('/drinks/<int:id>', methods=["DELETE"])
 @requires_auth('delete:drinks')
-def delete_drink(id):
+def delete_drink(z, id):
     """
     DELETE /drinks/<id>
         where <id> is the existing model id
